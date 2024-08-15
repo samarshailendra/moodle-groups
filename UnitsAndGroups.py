@@ -1,3 +1,7 @@
+'''
+Author Samar Shailendra
+License GPL v3.0
+'''
 import os
 import time
 import pandas as pd
@@ -9,6 +13,7 @@ import re
 import getpass
 from webdriver_manager.chrome import ChromeDriverManager
 
+
 # Suppress GetPassWarning
 #warnings.filterwarnings('ignore', category=getpass.GetPassWarning)
 
@@ -17,6 +22,7 @@ def graceful_exit(driver, message):
     print(f"Error: {message}")
     driver.quit()
     exit(1)
+
 
 def login_to_moodle(driver, username_str, password_str):
     """Function to log in to Moodle with user-provided credentials."""
@@ -35,6 +41,7 @@ def login_to_moodle(driver, username_str, password_str):
     password.send_keys(password_str)
     login_button.click()
     time.sleep(5)  # Wait for login to complete
+
 
 def get_group_mapping(driver, unit_id):
     """Function to create a mapping of group names to their values for a given unit."""
@@ -114,7 +121,7 @@ def get_chromedriver_path():
     while True:
         chromedriver_dir = input("Default Chromedriver Not found, Enter the ChromeDriver Install Directory: ")
         custom_path = chromedriver_dir + "//chromedriver"
-        print (custom_path)
+        print(custom_path)
         if os.path.exists(custom_path):
             return custom_path
         else:
@@ -165,6 +172,7 @@ def load_csv_file(file_name):
             if retry != 'y':
                 print("Exiting...")
                 exit(1)
+
 
 def main():
     # Load the Units.csv file
