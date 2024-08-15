@@ -1,6 +1,6 @@
 '''
-Author Samar Shailendra
-License GPL v3.0
+Author: Samar Shailendra
+License: GPL v3.0
 '''
 import os
 import time
