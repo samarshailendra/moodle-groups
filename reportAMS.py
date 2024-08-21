@@ -109,6 +109,7 @@ def load_csv_file(file_name):
                 print("Exiting...")
                 exit(1)
 
+
 def check_attendance_and_process_unit(driver, url):
     # Navigate to the provided URL
     driver.get(url)
@@ -140,17 +141,17 @@ def check_attendance_and_process_unit(driver, url):
                 attendance_str = attendance_element.text.strip()
 
                 if not attendance_str:
-                    print(f"Skipping student {student_id} due to missing attendance data.")
+                    logging.info(f"Skipping student {student_id} due to missing attendance data.")
                     continue
 
                 if attendance_str.endswith('%'):
                     attendance_percentage = float(attendance_str.strip('%'))
                 else:
-                    print(f"Skipping student {student_id} due to invalid attendance data: '{attendance_str}'")
+                    logging.info(f"Skipping student {student_id} due to invalid attendance data: '{attendance_str}'")
                     continue
 
                 if attendance_percentage < 50:
-                    print(f"Skipping student {student_id} with attendance {attendance_percentage}%.")
+                    logging.info(f"+++++++++ Skipping student {student_id} with attendance {attendance_percentage}%. +++++++++")
                     continue
 
                 print(f"Student {student_id} with attendance {attendance_percentage}% is eligible.")
@@ -165,7 +166,6 @@ def check_attendance_and_process_unit(driver, url):
 
     except Exception as e:
         print(f"An error occurred: {e}")
-
 
 
 def process_unit(driver, url, eligible_indices):
@@ -193,12 +193,12 @@ def process_unit(driver, url, eligible_indices):
         for index in range(len(view_links)):
             #Check if this is a valid index to be clicked or not
             if index not in eligible_indices:
-                print("This is not an eligible index to be processed")
+                print("This is not an eligible index to be processed.")
                 continue
 
             try:
                 # Click the link
-                print(f"Going to click the link: {index+1}")
+                print(f"Going to click the link: {index + 1}")
 
                 # Re-locate the link before each click to avoid stale element references
                 view_links = driver.find_elements(By.XPATH,
@@ -222,20 +222,20 @@ def process_unit(driver, url, eligible_indices):
 
                 update_assessment(driver)
 
-                print(f"returned from update_assessment for link: {index+1}")
+                print(f"returned from update_assessment for link: {index + 1}")
 
                 # Navigate back to the original page
                 #driver.back()
 
                 # Wait for the page to load again
                 WebDriverWait(driver, 10).until(
-                   EC.presence_of_element_located((By.ID, "timetable"))
+                    EC.presence_of_element_located((By.ID, "timetable"))
                 )
 
                 time.sleep(2)  # Additional wait to ensure all elements are loaded before the next iteration
 
             except Exception as e:
-                print(f"An error occurred on link {index + 1}: {e}")
+                logging.info(f"An error occurred on link {index + 1}: {e}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -302,6 +302,7 @@ def update_assessment(driver):
     except Exception as e:
         print(f"An error occurred while updating the assessment: {e}")
 
+
 # Function to set up logging
 def setup_logging(log_filename):
     logging.basicConfig(
@@ -317,6 +318,7 @@ def setup_logging(log_filename):
     console.setFormatter(formatter)
     logging.getLogger().addHandler(console)
 
+
 def main():
     # Load the Units.csv file
     """Read the AMS_Units.csv file."""
@@ -326,7 +328,7 @@ def main():
     ams_units, file_dir = load_csv_file(file_name)
     setup_logging(log_filename)
     # Example usage
-    logging.info("Setup Logging in file as well as on terminal.")
+    print("Setup Logging in file as well as on terminal.")
 
     # Prompt the user for their Moodle credentials before initializing WebDriver
     username_str = input("Enter your AMS username: ")
@@ -350,9 +352,8 @@ def main():
         url = base_url + str(unit_id)
         check_attendance_and_process_unit(driver, url)
 
-    print("Exiting")
+    logging.info("Exiting")
     driver.quit()
-
 
 
 if __name__ == "__main__":
