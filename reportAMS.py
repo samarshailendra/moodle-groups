@@ -109,8 +109,66 @@ def load_csv_file(file_name):
                 print("Exiting...")
                 exit(1)
 
+def check_attendance_and_process_unit(driver, url):
+    # Navigate to the provided URL
+    driver.get(url)
 
-def process_unit(driver, url):
+    try:
+        # Wait for the table or page to load completely
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "timetable"))
+        )
+
+        # Find all rows within the table
+        rows = driver.find_elements(By.XPATH, '//tr[contains(@class, "odd") or contains(@class, "even")]')
+
+        print(f"Number of rows found: {len(rows)}")
+
+        if not rows:
+            print("No rows found. Check the XPath or ensure the page has loaded correctly.")
+            return
+
+        # Store the indices of rows with attendance > 50%
+        eligible_indices = []
+
+        for index in range(len(rows)):
+            try:
+                row = rows[index]
+
+                student_id = row.find_element(By.XPATH, './td[3]').text
+                attendance_element = row.find_element(By.XPATH, './td[19]')
+                attendance_str = attendance_element.text.strip()
+
+                if not attendance_str:
+                    print(f"Skipping student {student_id} due to missing attendance data.")
+                    continue
+
+                if attendance_str.endswith('%'):
+                    attendance_percentage = float(attendance_str.strip('%'))
+                else:
+                    print(f"Skipping student {student_id} due to invalid attendance data: '{attendance_str}'")
+                    continue
+
+                if attendance_percentage < 50:
+                    print(f"Skipping student {student_id} with attendance {attendance_percentage}%.")
+                    continue
+
+                print(f"Student {student_id} with attendance {attendance_percentage}% is eligible.")
+                eligible_indices.append(index)
+
+            except Exception as e:
+                print(f"An error occurred on student {student_id}: {e}")
+
+        # Call process_unit for eligible rows only
+        if eligible_indices:
+            process_unit(driver, url, eligible_indices)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+
+
+def process_unit(driver, url, eligible_indices):
     # Navigate to the provided URL
     driver.get(url)
 
@@ -133,6 +191,11 @@ def process_unit(driver, url):
 
         # Loop through each link and click on it
         for index in range(len(view_links)):
+            #Check if this is a valid index to be clicked or not
+            if index not in eligible_indices:
+                print("This is not an eligible index to be processed")
+                continue
+
             try:
                 # Click the link
                 print(f"Going to click the link: {index+1}")
@@ -285,7 +348,7 @@ def main():
         unit_id = unit_row.iloc[1]  # Second column is the unit ID
         logging.info(f"++++++++++++ Processing Unit Name: {unit_name}, Unit ID: {unit_id} ++++++++++++")
         url = base_url + str(unit_id)
-        process_unit(driver, url)
+        check_attendance_and_process_unit(driver, url)
 
     print("Exiting")
     driver.quit()
