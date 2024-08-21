@@ -5,6 +5,7 @@ License: GPL v3.0
 import os
 import time
 import pandas as pd
+import logging
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -238,13 +239,31 @@ def update_assessment(driver):
     except Exception as e:
         print(f"An error occurred while updating the assessment: {e}")
 
+# Function to set up logging
+def setup_logging(log_filename):
+    logging.basicConfig(
+        filename=log_filename,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        filemode='w'
+    )
+    # Set up logging to the console as well
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger().addHandler(console)
 
 def main():
     # Load the Units.csv file
     """Read the AMS_Units.csv file."""
     file_name = "AMS_Units.csv"
+    log_filename = 'app.log'  # Replace with the desired log filename
 
     ams_units, file_dir = load_csv_file(file_name)
+    setup_logging(log_filename)
+    # Example usage
+    logging.info("Setup Logging in file as well as on terminal.")
 
     # Prompt the user for their Moodle credentials before initializing WebDriver
     username_str = input("Enter your AMS username: ")
@@ -264,12 +283,13 @@ def main():
     for index, unit_row in ams_units.iterrows():
         unit_name = unit_row.iloc[0]  # First column is the unit name
         unit_id = unit_row.iloc[1]  # Second column is the unit ID
-        print(f"Processing Unit Name: {unit_name}, Unit ID: {unit_id}")
+        logging.info(f"++++++++++++ Processing Unit Name: {unit_name}, Unit ID: {unit_id} ++++++++++++")
         url = base_url + str(unit_id)
         process_unit(driver, url)
 
     print("Exiting")
     driver.quit()
+
 
 
 if __name__ == "__main__":
