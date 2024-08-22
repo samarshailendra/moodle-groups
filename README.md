@@ -1,6 +1,6 @@
 # UpdateGroupsInMoodle and Reporting
 
-This are fun projects and you can expect the bugs and errors in it. Feel to update the source code by yourself or report it back for updates in future.
+These are fun projects and you can expect the bugs and errors in it. Feel to update the source code by yourself or report it back for updates in future.
 
 
 ## Pre-requisites
@@ -8,7 +8,6 @@ This are fun projects and you can expect the bugs and errors in it. Feel to upda
 1. Clone the repository using git clone. Or download the executable from the dist folder manually.
 2. For this repository to work, Install google chrome and ChromeDriver to automate the browser.
 
-```
 
 ## How to Use
 
@@ -22,7 +21,6 @@ This are fun projects and you can expect the bugs and errors in it. Feel to upda
 1. Create the AMS_Units.csv with the unit name and the unique unit id for your own group in the AMS. Note that there can be mulitple unit ids belonging to each person for a unit.
 2. Run the reportams executable in the dist folder and follow the onscreen instructions.
 3. The status logs are created in the app.log file. And most of the errors are displayed on screen. 
-
 
 ***
 ## Author
