@@ -48,21 +48,21 @@ def login_to_AMS(driver, username_str, password_str):
 
 
 def get_chromedriver_path():
-    #default_path = os.path.join(os.getcwd(), 'chromedriver')
-    default_path = "//home//mit//chromedriver-linux64//chromedriver"
+    default_path = os.path.join(os.getcwd(), 'chromedriver')
+    #default_path = "//home//mit//chromedriver-linux64//chromedriver"
 
     if os.path.exists(default_path):
         return default_path
 
     while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the ChromeDriver Install Directory: ")
-        custom_path = chromedriver_dir + "//chromedriver"
+        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the ChromeDriver EXE: ")
+        custom_path = chromedriver_dir #+ "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
             return custom_path
         else:
             retry = input(
-                "ChromeDriver not found at the specified path. Do you want to try again? (y/N): ").strip().lower()
+                "Path Not Found! Do you want to try again? (y/N): ").strip().lower()
             if retry != 'y':
                 print("Exiting...")
                 exit(1)
