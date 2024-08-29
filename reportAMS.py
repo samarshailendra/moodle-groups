@@ -48,21 +48,21 @@ def login_to_AMS(driver, username_str, password_str):
 
 
 def get_chromedriver_path():
-    #default_path = os.path.join(os.getcwd(), 'chromedriver')
-    default_path = "//home//mit//chromedriver-linux64//chromedriver"
+    default_path = os.path.join(os.getcwd(), 'chromedriver')
+    #default_path = "//home//mit//chromedriver-linux64//chromedriver"
 
     if os.path.exists(default_path):
         return default_path
 
     while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the ChromeDriver Install Directory: ")
-        custom_path = chromedriver_dir + "//chromedriver"
+        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the EXE (including the Executable Name): ")
+        custom_path = chromedriver_dir  #+ "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
             return custom_path
         else:
             retry = input(
-                "ChromeDriver not found at the specified path. Do you want to try again? (y/N): ").strip().lower()
+                "Path Not Found! Do you want to try again? (y/N): ").strip().lower()
             if retry != 'y':
                 print("Exiting...")
                 exit(1)
@@ -151,7 +151,8 @@ def check_attendance_and_process_unit(driver, url):
                     continue
 
                 if attendance_percentage < 50:
-                    logging.info(f"+++++++++ Skipping student {student_id} with attendance {attendance_percentage}%. +++++++++")
+                    logging.info(
+                        f"+++++++++ Skipping student {student_id} with attendance {attendance_percentage}%. +++++++++")
                     continue
 
                 print(f"Student {student_id} with attendance {attendance_percentage}% is eligible.")
@@ -235,7 +236,8 @@ def process_unit(driver, url, eligible_indices):
                 time.sleep(2)  # Additional wait to ensure all elements are loaded before the next iteration
 
             except Exception as e:
-                logging.info(f"An error occurred on link {index + 1}: {e}")
+                logging.info(f"An error occurred on link {index + 1}")
+                print(e)  #print the stack trace only on console.
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -328,7 +330,7 @@ def main():
     ams_units, file_dir = load_csv_file(file_name)
     setup_logging(log_filename)
     # Example usage
-    print("Setup Logging in file as well as on terminal.")
+    print("Setup Logging in file. While Errors and StackTraces are printed only on terminal!")
 
     # Prompt the user for their Moodle credentials before initializing WebDriver
     username_str = input("Enter your AMS username: ")
