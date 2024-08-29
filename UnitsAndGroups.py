@@ -119,7 +119,7 @@ def get_chromedriver_path():
         return default_path
 
     while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE : ")
+        chromedriver_dir = input("Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE (including the executable name) : ")
         custom_path = chromedriver_dir #+ "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
@@ -156,7 +156,7 @@ def load_csv_file(file_name):
 
     # If not found, prompt the user for the correct path
     while True:
-        file_dir = input(f"File '{file_name}' not found. Enter the full folder path of the file: ")
+        file_dir = input(f"File '{file_name}' not found. Enter the full folder path of the file : ")
         custom_path = file_dir + "/" + file_name
 
         if os.path.exists(custom_path):

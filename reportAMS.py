@@ -55,7 +55,7 @@ def get_chromedriver_path():
         return default_path
 
     while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the ChromeDriver EXE: ")
+        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the EXE (including the Executable Name): ")
         custom_path = chromedriver_dir  #+ "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
