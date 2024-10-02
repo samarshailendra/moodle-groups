@@ -6,12 +6,14 @@ import os
 import time
 import pandas as pd
 from selenium import webdriver
+from selenium.common import WebDriverException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 import re
 import getpass
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 
 # Suppress GetPassWarning
@@ -112,6 +114,7 @@ def process_unit(driver, unit_dir, unit_name, unit_id):
         add_students_to_group(driver, group_value, student_names)
 
 
+#This method is not used anymore
 def get_chromedriver_path():
     default_path = os.path.join(os.getcwd(), 'chromedriver')
 
@@ -119,8 +122,9 @@ def get_chromedriver_path():
         return default_path
 
     while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE (including the executable name) : ")
-        custom_path = chromedriver_dir #+ "//chromedriver"
+        chromedriver_dir = input(
+            "Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE (including the executable name) : ")
+        custom_path = chromedriver_dir  #+ "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
             return custom_path
@@ -133,6 +137,17 @@ def get_chromedriver_path():
 
 
 def setup_chrome_driver():
+    try:
+        print("Automatically downloads and installs ChromeDriver")
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        return driver
+    except WebDriverException as e:
+        print(f"Failed to set up ChromeDriver: {e}")
+        exit(1)  # Exit here if chromedriver failed
+
+
+#This method is not used anymore.
+def setup_chrome_driver_old():
     chromedriver_path = get_chromedriver_path()
     try:
         service = ChromeService(executable_path=chromedriver_path)
@@ -175,6 +190,11 @@ def load_csv_file(file_name):
 
 
 def main():
+    retry = input("IMPORTANT - Have you already created the group names on Moodle ? ").strip().lower()
+    if retry != 'y':
+        print("Please create the groups on Moodle using the import groups feature, or create them Manually.")
+        exit(1)
+
     # Load the Units.csv file
     """Read the Units.csv file."""
     file_name = "Units.csv"
