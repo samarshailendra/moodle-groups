@@ -3,6 +3,9 @@ Author: Samar Shailendra
 License: GPL v3.0
 '''
 import os
+import platform
+import subprocess
+import sys
 import time
 import pandas as pd
 import logging
@@ -333,8 +336,35 @@ def setup_logging(log_filename):
     console.setFormatter(formatter)
     logging.getLogger().addHandler(console)
 
+def check_chrome_installed():
+    """Check if Google Chrome is installed."""
+    try:
+        # Try running 'google-chrome --version' to see if it's installed
+        subprocess.run(['google-chrome', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #print("Google Chrome is installed.")
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Google Chrome is not installed.")
+        return False
+
+def check_operating_system():
+    """Check if the operating system is Linux."""
+    if platform.system() == "Linux":
+        #print("Operating system is Linux.")
+        return True
+    else:
+        print(f"Operating system is not Linux. Detected OS: {platform.system()}. \nPls build it using source.")
+        return False
+
+def validate_environment():
+    """Ensure both Google Chrome is installed and the OS is Linux."""
+    if not check_chrome_installed() or not check_operating_system():
+        print("Environment validation failed. Exiting...")
+        sys.exit(1)  # Exit the program with a status of 1 (indicating an error)
+    #print("Both conditions are met. Proceeding...")
 
 def main():
+    validate_environment()
     # Load the Units.csv file
     """Read the AMS_Units.csv file."""
     file_name = "AMS_Units.csv"
