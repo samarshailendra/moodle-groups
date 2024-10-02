@@ -138,7 +138,7 @@ def get_chromedriver_path():
 
 def setup_chrome_driver():
     try:
-        print("Automatically downloads and installs ChromeDriver")
+        print("Automatically downloads and installs ChromeDriver!")
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
         return driver
     except WebDriverException as e:
