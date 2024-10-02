@@ -192,7 +192,8 @@ def load_csv_file(file_name):
 def main():
     retry = input("IMPORTANT - Have you already created the group names on Moodle ? ").strip().lower()
     if retry != 'y':
-        print("Please create the groups on Moodle using the import groups feature, or create them Manually.")
+        print(" Please create the groups on Moodle using the import groups feature (Check the template CSV on Git or "
+              "Moodle Docs), \n OR \n Create them Manually on Moodle.")
         exit(1)
 
     # Load the Units.csv file
