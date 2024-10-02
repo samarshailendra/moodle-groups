@@ -1,0 +1,5 @@
+2024-10-02 12:08:33,886 - INFO - ====== WebDriver manager ======
+2024-10-02 12:08:33,931 - INFO - Get LATEST chromedriver version for google-chrome
+2024-10-02 12:08:33,941 - INFO - Get LATEST chromedriver version for google-chrome
+2024-10-02 12:08:33,953 - INFO - Driver [/home/mit/.wdm/drivers/chromedriver/linux64/127.0.6533.119/chromedriver-linux64/chromedriver] found in cache
+2024-10-02 12:08:40,080 - INFO - ++++++++++++ Processing Unit Name: BN301, Unit ID: 53371 ++++++++++++
