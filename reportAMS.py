@@ -7,6 +7,7 @@ import time
 import pandas as pd
 import logging
 from selenium import webdriver
+from selenium.common import WebDriverException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
@@ -16,6 +17,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import re
 import getpass
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 
 # Suppress GetPassWarning
@@ -47,36 +49,47 @@ def login_to_AMS(driver, username_str, password_str):
     time.sleep(5)  # Wait for login to complete
 
 
-def get_chromedriver_path():
-    default_path = os.path.join(os.getcwd(), 'chromedriver')
-    #default_path = "//home//mit//chromedriver-linux64//chromedriver"
+#This function is redundant now.
+#def get_chromedriver_path():
+#    default_path = os.path.join(os.getcwd(), 'chromedriver')
+#    #default_path = "//home//mit//chromedriver-linux64//chromedriver"
 
-    if os.path.exists(default_path):
-        return default_path
+#    if os.path.exists(default_path):
+#        return default_path
 
-    while True:
-        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the EXE (including the Executable Name): ")
-        custom_path = chromedriver_dir  #+ "//chromedriver"
-        print(custom_path)
-        if os.path.exists(custom_path):
-            return custom_path
-        else:
-            retry = input(
-                "Path Not Found! Do you want to try again? (y/N): ").strip().lower()
-            if retry != 'y':
-                print("Exiting...")
-                exit(1)
+#    while True:
+#        chromedriver_dir = input("Default Chromedriver Not found, Enter the full path to the EXE (including the Executable Name): ")
+#        custom_path = chromedriver_dir  #+ "//chromedriver"
+#        print(custom_path)
+#        if os.path.exists(custom_path):
+#            return custom_path
+#        else:
+#            retry = input(
+#                "Path Not Found! Do you want to try again? (y/N): ").strip().lower()
+#            if retry != 'y':
+#                print("Exiting...")
+#                exit(1)
 
 
 def setup_chrome_driver():
-    chromedriver_path = get_chromedriver_path()
     try:
-        service = ChromeService(executable_path=chromedriver_path)
-        driver = webdriver.Chrome(service=service)
+        print("Automatically downloads and installs ChromeDriver")
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
         return driver
-    except Exception as e:
-        print(f"Error initializing ChromeDriver: {e}")
-        exit(1)
+    except WebDriverException as e:
+        print(f"Failed to set up ChromeDriver: {e}")
+        exit(1)  # Exit here if chromedriver failed
+
+
+    #chromedriver_path = get_chromedriver_path()
+    #try:
+    #    service = ChromeService(executable_path=chromedriver_path)
+    #    driver = webdriver.Chrome(service=service)
+    #    return driver
+    #except Exception as e:
+    #    print(f"Error initializing ChromeDriver: {e}")
+    #    exit(1)
+
 
 
 def load_csv_file(file_name):
