@@ -68,11 +68,40 @@ def get_group_mapping(driver, unit_id):
     return group_mapping
 
 
+def ensure_auto_select_checkbox(driver):
+    """
+    Ensures the checkbox 'If only one user matches the search, select them automatically' is selected
+    by explicitly checking the 'checked' attribute.
+    """
+    try:
+        # Locate the checkbox by its ID
+        auto_select_checkbox = driver.find_element(By.ID, 'userselector_autoselectuniqueid')
+
+        # Bring the checkbox into view (focus) before interacting
+        driver.execute_script("arguments[0].scrollIntoView(true);", auto_select_checkbox)
+
+        # Retrieve the 'checked' attribute
+        is_checked = auto_select_checkbox.get_attribute("checked")
+
+        # If 'checked' is None or False, the checkbox is not selected
+        if is_checked is None or is_checked.lower() != "true":
+            auto_select_checkbox.click()
+            print(
+                "Checkbox 'If only one user matches the search, select them automatically' was not selected. Now selected.")
+        #else:
+        #    print("Checkbox 'If only one user matches the search, select them automatically' is already selected.")
+    except Exception as e:
+        graceful_exit(driver, f"Failed to locate or interact with the checkbox: {e}")
+
+
 def add_students_to_group(driver, group_value, student_names):
     """Function to add multiple students to a group."""
     add_student_url = f"https://moodle.mit.edu.au/group/members.php?group={group_value}"
     driver.get(add_student_url)
     time.sleep(1)  # Wait for the page to load
+
+    # Ensure the autoselect single output checkbox is selected
+    ensure_auto_select_checkbox(driver)
 
     for student_name in student_names:
         print(f"Adding Student: {student_name}")
@@ -111,7 +140,7 @@ def process_unit(driver, unit_dir, unit_name, unit_id):
         if group_name not in group_mapping:
             graceful_exit(driver, f"Group name '{group_name}' not found in mapping for unit {unit_name}")
 
-        print(f"Adding for Group: {group_name}")
+        print(f"Adding the members for Group: {group_name}")
 
         group_value = group_mapping[group_name]
         add_students_to_group(driver, group_value, student_names)
@@ -191,6 +220,7 @@ def load_csv_file(file_name):
                 print("Exiting...")
                 exit(1)
 
+
 def check_chrome_installed():
     """Check if Google Chrome is installed."""
     try:
@@ -202,6 +232,7 @@ def check_chrome_installed():
         print("Google Chrome is not installed.")
         return False
 
+
 def check_operating_system():
     """Check if the operating system is Linux."""
     if platform.system() == "Linux":
@@ -210,6 +241,7 @@ def check_operating_system():
     else:
         print(f"Operating system is not Linux. Detected OS: {platform.system()}. \nPls build it using source.")
         return False
+
 
 def validate_environment():
     """Ensure both Google Chrome is installed and the OS is Linux."""
