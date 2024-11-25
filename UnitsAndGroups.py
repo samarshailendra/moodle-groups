@@ -221,7 +221,7 @@ def validate_environment():
 
 def main():
     validate_environment()
-    retry = input("IMPORTANT - Have you already created the group names on Moodle ? ").strip().lower()
+    retry = input("IMPORTANT - Have you already created the group names on Moodle (y/n)? ").strip().lower()
     if retry != 'y':
         print(" Please create the groups on Moodle using the import groups feature (Check the template CSV on Git or "
               "Moodle Docs), \n OR \n Create them Manually on Moodle.")
