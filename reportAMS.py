@@ -83,7 +83,6 @@ def setup_chrome_driver():
         print(f"Failed to set up ChromeDriver: {e}")
         exit(1)  # Exit here if chromedriver failed
 
-
     #chromedriver_path = get_chromedriver_path()
     #try:
     #    service = ChromeService(executable_path=chromedriver_path)
@@ -92,7 +91,6 @@ def setup_chrome_driver():
     #except Exception as e:
     #    print(f"Error initializing ChromeDriver: {e}")
     #    exit(1)
-
 
 
 def load_csv_file(file_name):
@@ -126,7 +124,42 @@ def load_csv_file(file_name):
                 exit(1)
 
 
-def check_attendance_and_process_unit(driver, url):
+def is_student_in_skip_list(unit_name, student_id):
+    """
+        Checks if a given student_id exists in the CSV file.
+
+        Parameters:
+        - file_path (str): Path to the CSV file.
+        - student_id (str): Student ID to search for.
+
+        Returns:
+        - bool: True if student_id is found, False otherwise.
+        """
+
+    file_path = f"{unit_name}_skip.csv"
+    if not os.path.isfile(file_path):
+        print(f"File '{file_path}' not found in the current directory. Ensure No Student to Skip!")
+        return False
+
+    try:
+        with open(file_path, mode='r', newline='', encoding='utf-8') as skip_students:
+            df = pd.read_csv(skip_students)
+
+            # Flatten the DataFrame values to a single list of strings
+            all_ids = df.values.flatten()
+
+            # Convert all IDs to lowercase for case-insensitive comparison
+            all_ids_lower = map(lambda x: str(x).lower(), all_ids)
+
+            if student_id.lower() in all_ids_lower:
+                return True
+        return False
+    except FileNotFoundError:
+        print("File not found. Please check the file path or ensure NO student to Skip!")
+        return False
+
+
+def check_attendance_and_process_unit(driver, unit_name, url):
     # Navigate to the provided URL
     driver.get(url)
 
@@ -166,9 +199,14 @@ def check_attendance_and_process_unit(driver, url):
                     logging.info(f"Skipping student {student_id} due to invalid attendance data: '{attendance_str}'")
                     continue
 
-                if attendance_percentage < 50:
+                if attendance_percentage <= 50:
                     logging.info(
                         f"+++++++++ Skipping student {student_id} with attendance {attendance_percentage}%. +++++++++")
+                    continue
+
+                if is_student_in_skip_list(unit_name, student_id):
+                    logging.info(
+                        f"+++++++++ Skipping student {student_id}, for this is in the skip list. ++++++++")
                     continue
 
                 print(f"Student {student_id} with attendance {attendance_percentage}% is eligible.")
@@ -336,6 +374,7 @@ def setup_logging(log_filename):
     console.setFormatter(formatter)
     logging.getLogger().addHandler(console)
 
+
 def check_chrome_installed():
     """Check if Google Chrome is installed."""
     try:
@@ -347,6 +386,7 @@ def check_chrome_installed():
         print("Google Chrome is not installed.")
         return False
 
+
 def check_operating_system():
     """Check if the operating system is Linux."""
     if platform.system() == "Linux":
@@ -356,12 +396,14 @@ def check_operating_system():
         print(f"Operating system is not Linux. Detected OS: {platform.system()}. \nPls build it using source.")
         return False
 
+
 def validate_environment():
     """Ensure both Google Chrome is installed and the OS is Linux."""
     if not check_chrome_installed() or not check_operating_system():
         print("Environment validation failed. Exiting...")
         sys.exit(1)  # Exit the program with a status of 1 (indicating an error)
     #print("Both conditions are met. Proceeding...")
+
 
 def main():
     validate_environment()
@@ -395,7 +437,7 @@ def main():
         unit_id = unit_row.iloc[1]  # Second column is the unit ID
         logging.info(f"++++++++++++ Processing Unit Name: {unit_name}, Unit ID: {unit_id} ++++++++++++")
         url = base_url + str(unit_id)
-        check_attendance_and_process_unit(driver, url)
+        check_attendance_and_process_unit(driver, unit_name, url)
 
     logging.info("Exiting")
     driver.quit()

@@ -1,0 +1,11 @@
+2024-12-04 11:21:59,215 - INFO - ====== WebDriver manager ======
+2024-12-04 11:21:59,273 - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-04 11:21:59,300 - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-04 11:21:59,309 - INFO - Driver [/home/mit/.wdm/drivers/chromedriver/linux64/129.0.6668.100/chromedriver-linux64/chromedriver] found in cache
+2024-12-04 11:22:07,165 - INFO - ++++++++++++ Processing Unit Name: MN621, Unit ID: 54841 ++++++++++++
+2024-12-04 11:22:07,668 - INFO - +++++++++ Skipping student MIT224115 with attendance 0.0%. +++++++++
+2024-12-04 11:22:07,709 - INFO - +++++++++ Skipping student MIT224334 with attendance 33.33%. +++++++++
+2024-12-04 11:22:07,814 - INFO - +++++++++ Skipping student MIT231040, for this is in the skip list. ++++++++
+2024-12-04 11:22:07,871 - INFO - +++++++++ Skipping student MIT232391, for this is in the skip list. ++++++++
+2024-12-04 11:22:08,025 - INFO - +++++++++ Skipping student MIT242493 with attendance 50.0%. +++++++++
+2024-12-04 11:23:19,664 - INFO - Exiting
