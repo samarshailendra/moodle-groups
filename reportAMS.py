@@ -153,6 +153,7 @@ def is_student_in_skip_list(unit_name, student_id):
 
             if student_id.lower() in all_ids_lower:
                 return True
+
         return False
     except FileNotFoundError:
         print("File not found. Please check the file path or ensure NO student to Skip!")
