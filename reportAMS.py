@@ -95,6 +95,77 @@ def setup_chrome_driver():
 
 def load_csv_file(file_name):
     file_dir = None
+
+    # Function to list skip files based on unit names in the file
+    def find_skip_files(file_name):
+        try:
+            # Read the unit names from the CSV file (assuming first column has unit names)
+            units_df = pd.read_csv(file_name)
+            unit_names = units_df.iloc[1:, 0].dropna().unique()  # Skip the header, ensure unique unit names
+
+            # Get the directory of the file
+            file_directory = os.path.dirname(os.path.abspath(file_name))
+
+            # Check for corresponding skip files in the same directory as the file_name
+            skip_files = []
+            for unit_name in unit_names:
+                skip_file_name = f"{unit_name}_skip.csv"
+                if os.path.exists(os.path.join(file_directory, skip_file_name)):
+                    skip_files.append(skip_file_name)
+
+            return skip_files
+
+        except Exception as e:
+            print(f"Failed to process {file_name} to find skip files: {e}")
+            exit(1)
+
+    # Check if the file exists in the current directory
+    if os.path.exists(file_name):
+        file_dir = os.getcwd()
+    else:
+        while True:
+            file_dir = input(f"File '{file_name}' not found. Enter the full folder path of the file: ")
+            custom_path = os.path.join(file_dir, file_name)
+
+            if os.path.exists(custom_path):
+                file_name = custom_path
+                break
+            else:
+                print(f"File not found at '{custom_path}'.")
+                retry = input("Do you want to try entering the path again? (y/N): ").strip().lower()
+                if retry != 'y':
+                    print("Exiting...")
+                    exit(1)
+
+    # Find skip files
+    skip_files = find_skip_files(file_name)
+
+    if skip_files:
+        print("The following skip files exist:")
+        for skip_file in skip_files:
+            print(f"- {skip_file}")
+
+        user_input = input("Do you want to continue? (y/n): ").strip().lower()
+        if user_input != "y":
+            print("Exiting...")
+            exit(1)
+    else:
+        user_input = input("No Skip File Exist. Do you want to continue? (y/n): ").strip().lower()
+        if user_input != "y":
+            print("Exiting...")
+            exit(1)
+
+    # Load the main CSV file
+    try:
+        units_df = pd.read_csv(file_name)
+        return units_df, file_dir
+    except Exception as e:
+        print(f"Failed to read {file_name}: {e}")
+        exit(1)
+
+
+def load_csv_file_old(file_name):
+    file_dir = None
     # First, check if the file exists in the current directory
     if os.path.exists(file_name):
         try:
