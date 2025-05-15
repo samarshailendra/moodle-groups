@@ -10,17 +10,25 @@ import time
 import pandas as pd
 from selenium import webdriver
 from selenium.common import WebDriverException
+from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.common.by import By
-import re
 import getpass
+import re
+import zipfile
+import urllib.request
+import shutil
+import stat
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 
 
 # Suppress GetPassWarning
-#warnings.filterwarnings('ignore', category=getpass.GetPassWarning)
+# warnings.filterwarnings('ignore', category=getpass.GetPassWarning)
 
 def graceful_exit(driver, message):
     """Function to gracefully exit with an error message."""
@@ -29,23 +37,19 @@ def graceful_exit(driver, message):
     exit(1)
 
 
-def login_to_moodle(driver, username_str, password_str):
-    """Function to log in to Moodle with user-provided credentials."""
-    #username_str = input("Enter your Moodle username: ")
-    #password_str = getpass.getpass("Enter your Moodle password: ")
+def login_to_moodle(driver):
+    """Open Moodle login page and wait for manual login to complete."""
+    print("Opening Moodle login page... Please log in manually.")
+    driver.get("https://moodle.mit.edu.au/login/index.php")
 
-    driver.get('https://moodle.mit.edu.au/login/index.php')
     try:
-        username = driver.find_element(By.ID, 'username')
-        password = driver.find_element(By.ID, 'password')
-        login_button = driver.find_element(By.ID, 'loginbtn')
-    except Exception as e:
-        graceful_exit(driver, f"Failed to locate login elements: {e}")
+        # Wait until user is logged in by detecting a page change
+        WebDriverWait(driver, 120).until(lambda d: "login" not in d.current_url.lower())
 
-    username.send_keys(username_str)
-    password.send_keys(password_str)
-    login_button.click()
-    time.sleep(5)  # Wait for login to complete
+        print("Login successful. Continuing automation...")
+    except Exception as e:
+        driver.save_screenshot("login_debug_manual.png")
+        graceful_exit(driver, f"Login not detected after timeout. Error: {e}")
 
 
 def get_group_mapping(driver, unit_id):
@@ -88,7 +92,7 @@ def ensure_auto_select_checkbox(driver):
             auto_select_checkbox.click()
             print(
                 "Checkbox 'If only one user matches the search, select them automatically' was not selected. Now selected.")
-        #else:
+        # else:
         #    print("Checkbox 'If only one user matches the search, select them automatically' is already selected.")
     except Exception as e:
         graceful_exit(driver, f"Failed to locate or interact with the checkbox: {e}")
@@ -146,7 +150,42 @@ def process_unit(driver, unit_dir, unit_name, unit_id):
         add_students_to_group(driver, group_value, student_names)
 
 
-#This method is not used anymore
+def prompt_for_unit_info():
+    """Prompt the user for unit name and Moodle unit ID, then locate the corresponding CSV."""
+    unit_name = input("Enter the Unit Name (e.g., MITS5001): ").strip()
+
+    while True:
+        unit_id_input = input("Enter the Moodle Unit ID (numeric only): ").strip()
+        if unit_id_input.isdigit():
+            unit_id = int(unit_id_input)
+            break
+        else:
+            print("Invalid Unit ID. Please enter a numeric value.")
+
+    # Look for "<unit_name>_groups.csv" in current directory
+    group_file = f"{unit_name}_groups.csv"
+    unit_dir = None
+
+    if not os.path.exists(group_file):
+        # Ask user for directory
+        while True:
+            file_dir = input(f"File '{group_file}' not found. Enter the full folder path of the file: ").strip()
+            custom_path = os.path.join(file_dir, group_file)
+
+            if os.path.exists(custom_path):
+                unit_dir = file_dir
+                break
+            else:
+                print(f"File not found at '{custom_path}'.")
+                retry = input("Do you want to try again? (y/N): ").strip().lower()
+                if retry != 'y':
+                    print("Exiting...")
+                    exit(1)
+
+    return unit_name, unit_id, unit_dir
+
+
+# This method is not used anymore
 def get_chromedriver_path():
     default_path = os.path.join(os.getcwd(), 'chromedriver')
 
@@ -156,7 +195,7 @@ def get_chromedriver_path():
     while True:
         chromedriver_dir = input(
             "Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE (including the executable name) : ")
-        custom_path = chromedriver_dir  #+ "//chromedriver"
+        custom_path = chromedriver_dir  # + "//chromedriver"
         print(custom_path)
         if os.path.exists(custom_path):
             return custom_path
@@ -168,26 +207,94 @@ def get_chromedriver_path():
                 exit(1)
 
 
+def get_chrome_version():
+    system = platform.system()
+    version = None
+    try:
+        if system == "Windows":
+            output = subprocess.check_output(
+                r'reg query "HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon" /v version',
+                shell=True).decode()
+            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output).group(1)
+        elif system == "Linux":
+            output = subprocess.check_output(["google-chrome", "--version"]).decode()
+            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output).group(1)
+    except Exception as e:
+        print(f"Could not detect Chrome version: {e}")
+        sys.exit(1)
+
+    return version
+
+
+def get_chromedriver_download_url(version, os_name):
+    base_url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing"
+    version_main = ".".join(version.split('.')[:3])
+    if os_name == "Windows":
+        return f"{base_url}/{version}/win64/chromedriver-win64.zip"
+    elif os_name == "Linux":
+        return f"{base_url}/{version}/linux64/chromedriver-linux64.zip"
+    else:
+        raise Exception("Unsupported OS for ChromeDriver download")
+
+
 def setup_chrome_driver():
-    try:
-        print("Automatically downloads and installs ChromeDriver!")
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-        return driver
-    except WebDriverException as e:
-        print(f"Failed to set up ChromeDriver: {e}")
-        exit(1)  # Exit here if chromedriver failed
+    os_name = platform.system()
+    chrome_version = get_chrome_version()  # You must define this function separately
+    version_tag = chrome_version.replace(".", "_")
+    driver_dir = os.path.join(os.getcwd(), f"chromedriver_{os_name}_v{version_tag}")
+    driver_bin = "chromedriver.exe" if os_name == "Windows" else "chromedriver"
+    driver_path = os.path.join(driver_dir, driver_bin)
 
+    if os.path.exists(driver_path):
+        print(f"✅ Found existing ChromeDriver for version {chrome_version}")
+    else:
+        print(f"⬇️  Downloading ChromeDriver for version {chrome_version}...")
 
-#This method is not used anymore.
-def setup_chrome_driver_old():
-    chromedriver_path = get_chromedriver_path()
+        download_url = get_chromedriver_download_url(chrome_version, os_name)  # Define this as well
+        zip_path = os.path.join(driver_dir, "chromedriver.zip")
+        os.makedirs(driver_dir, exist_ok=True)
+
+        try:
+            urllib.request.urlretrieve(download_url, zip_path)
+
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(driver_dir)
+
+            os.remove(zip_path)
+
+            # Search for chromedriver inside the extracted structure
+            found = False
+            for root, dirs, files in os.walk(driver_dir):
+                for file in files:
+                    if file.lower().startswith("chromedriver"):
+                        extracted_path = os.path.join(root, file)
+                        shutil.move(extracted_path, driver_path)
+                        found = True
+                        break
+                if found:
+                    break
+
+            if not os.path.exists(driver_path):
+                raise FileNotFoundError("ChromeDriver executable not found after extraction.")
+
+            # Set executable permissions on Linux
+            if os_name != "Windows":
+                os.chmod(driver_path, os.stat(driver_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+            print(f"✅ ChromeDriver saved to: {driver_path}")
+
+        except Exception as e:
+            print(f"❌ Error downloading or extracting ChromeDriver: {e}")
+            sys.exit(1)
+
+    # Launch WebDriver
     try:
-        service = ChromeService(executable_path=chromedriver_path)
+        service = ChromeService(executable_path=driver_path)
         driver = webdriver.Chrome(service=service)
         return driver
     except Exception as e:
-        print(f"Error initializing ChromeDriver: {e}")
-        exit(1)
+        print(f"❌ Failed to launch ChromeDriver: {e}")
+        sys.exit(1)
 
 
 def load_csv_file(file_name):
@@ -222,71 +329,85 @@ def load_csv_file(file_name):
 
 
 def check_chrome_installed():
-    """Check if Google Chrome is installed."""
+    """Check if Google Chrome is installed on Linux or Windows."""
+    system = platform.system()
+
     try:
-        # Try running 'google-chrome --version' to see if it's installed
-        subprocess.run(['google-chrome', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #print("Google Chrome is installed.")
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print("Google Chrome is not installed.")
+        if system == "Linux":
+            # Try command line
+            result = subprocess.run(['google-chrome', '--version'], check=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            version = result.stdout.decode().strip()
+            print(f"Detected Chrome version: {version}")
+            return True
+
+        elif system == "Windows":
+            # Try registry query (user-level Chrome install)
+            result = subprocess.check_output(
+                r'reg query "HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon" /v version',
+                shell=True).decode()
+            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", result)
+            if version:
+                print(f"Detected Chrome version: {version.group(1)}")
+                return True
+            else:
+                print("Chrome registry key found but version could not be parsed.")
+                return False
+        else:
+            print(f"Unsupported OS: {system}")
+            return False
+    except Exception as e:
+        print(f"Could not detect Google Chrome: {e}")
         return False
 
 
 def check_operating_system():
-    """Check if the operating system is Linux."""
-    if platform.system() == "Linux":
-        #print("Operating system is Linux.")
-        return True
-    else:
-        print(f"Operating system is not Linux. Detected OS: {platform.system()}. \nPls build it using source.")
-        return False
+    """Return the name of the current operating system."""
+    os_name = platform.system()
+    print(f"Detected Operating System: {os_name}")
+    return os_name in ["Linux", "Windows"]
 
 
 def validate_environment():
-    """Ensure both Google Chrome is installed and the OS is Linux."""
-    if not check_chrome_installed() or not check_operating_system():
-        print("Environment validation failed. Exiting...")
-        sys.exit(1)  # Exit the program with a status of 1 (indicating an error)
-    #print("Both conditions are met. Proceeding...")
+    """Ensure Google Chrome is installed and OS is supported."""
+    if not check_operating_system():
+        print("Unsupported operating system. Exiting...")
+        sys.exit(1)
+
+    if not check_chrome_installed():
+        print("Google Chrome not found. Please install it first.")
+        sys.exit(1)
+
+    print("Environment validation successful.")
 
 
 def main():
     validate_environment()
+
     retry = input("IMPORTANT - Have you already created the group names on Moodle (y/n)? ").strip().lower()
     if retry != 'y':
         print(" Please create the groups on Moodle using the import groups feature (Check the template CSV on Git or "
               "Moodle Docs), \n OR \n Create them Manually on Moodle.")
         exit(1)
 
-    # Load the Units.csv file
-    """Read the Units.csv file."""
-    file_name = "Units.csv"
+    while True:
+        # Ask for unit info before launching browser
+        unit_name, unit_id, unit_dir = prompt_for_unit_info()
 
-    units_df, unit_dir = load_csv_file(file_name)
+        # Launch browser only after inputs are collected
+        driver = setup_chrome_driver()
+        login_to_moodle(driver)
 
-    # Prompt the user for their Moodle credentials before initializing WebDriver
-    username_str = input("Enter your Moodle username: ")
-    password_str = getpass.getpass("Enter your Moodle password: ")
-
-    # Set up the WebDriver (e.g., Chrome)
-    #service = ChromeService(executable_path='//home//mit//chromedriver-linux64//chromedriver')
-    # Now use the function to set up the WebDriver
-    driver = setup_chrome_driver()
-
-    # Log in to Moodle
-    login_to_moodle(driver, username_str, password_str)
-
-    # Process each unit
-    for index, unit_row in units_df.iterrows():
-        unit_name = unit_row.iloc[0]  # First column is the unit name
-        unit_id = unit_row.iloc[1]  # Second column is the unit ID
         print(f"Processing Unit Name: {unit_name}, Unit ID: {unit_id}")
-
         process_unit(driver, unit_dir, unit_name, unit_id)
 
-    print("Exiting")
-    driver.quit()
+        # Close browser session after each unit
+        driver.quit()
+
+        again = input("Do you want to process another unit? (y/N): ").strip().lower()
+        if again != 'y':
+            print("All done. Exiting.")
+            break
 
 
 if __name__ == "__main__":

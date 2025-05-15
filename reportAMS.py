@@ -209,7 +209,7 @@ def is_student_in_skip_list(unit_name, student_id):
 
     file_path = f"{unit_name}_skip.csv"
     if not os.path.isfile(file_path):
-        print(f"File '{file_path}' not found in the current directory. Ensure No Student to Skip!")
+        print(f"File '{file_path}' not found in the current directory. Ensure No Student has failed Formative Assessment !")
         return False
 
     try:
@@ -227,13 +227,15 @@ def is_student_in_skip_list(unit_name, student_id):
 
         return False
     except FileNotFoundError:
-        print("File not found. Please check the file path or ensure NO student to Skip!")
+        print("File not found. Please check the file path or ensure NO student has failed Formative Assessment!")
         return False
 
 
 def check_attendance_and_process_unit(driver, unit_name, url):
     # Navigate to the provided URL
     driver.get(url)
+
+    time.sleep(5)
 
     try:
         # Wait for the table or page to load completely
@@ -509,6 +511,7 @@ def main():
         unit_id = unit_row.iloc[1]  # Second column is the unit ID
         logging.info(f"++++++++++++ Processing Unit Name: {unit_name}, Unit ID: {unit_id} ++++++++++++")
         url = base_url + str(unit_id)
+        logging.info(f"++++++++++++ Processing URL: {url}  ++++++++++++")
         check_attendance_and_process_unit(driver, unit_name, url)
 
     logging.info("Exiting")
