@@ -1,12 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 a = Analysis(
     ['UnitsAndGroups.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[],
+    binaries=collect_dynamic_libs('playwright'),
+    datas=collect_data_files('playwright'),
+    hiddenimports=collect_submodules('playwright'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

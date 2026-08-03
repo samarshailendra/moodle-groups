@@ -11,11 +11,25 @@ env/
 build/
 dist/
 *.egg-info/
-*.spec
 
 # IDE/editor folders
 .idea/
 .vscode/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local application data
+*.csv
+!Template_ImportGroupsInMoodle.csv
+*.log
+
+# Locally downloaded browser drivers
+chromedriver*/
+chromedriver-*.zip
 
 # System files
 Thumbs.db

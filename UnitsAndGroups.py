@@ -1,413 +1,292 @@
-'''
+"""
+Add students to existing Moodle groups from a CSV file.
+
 Author: Samar Shailendra
 License: GPL v3.0
-'''
+"""
+
+from __future__ import annotations
+
+import csv
 import os
-import platform
-import subprocess
-import sys
-import time
-import pandas as pd
-from selenium import webdriver
-from selenium.common import WebDriverException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service as ChromeService
-import getpass
 import re
-import zipfile
-import urllib.request
-import shutil
-import stat
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
+import sys
+from collections import OrderedDict
+from pathlib import Path
+from typing import TYPE_CHECKING, OrderedDict as OrderedDictType
 
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
+if TYPE_CHECKING:
+    from playwright.sync_api import Browser, Page, Playwright
 
+try:
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    PlaywrightError = PlaywrightTimeoutError = RuntimeError
+    sync_playwright = None
 
-# Suppress GetPassWarning
-# warnings.filterwarnings('ignore', category=getpass.GetPassWarning)
 
-def graceful_exit(driver, message):
-    """Function to gracefully exit with an error message."""
-    print(f"Error: {message}")
-    driver.quit()
-    exit(1)
+MOODLE_URL = "https://moodle.mit.edu.au"
+LOGIN_URL = f"{MOODLE_URL}/login/index.php"
+WAIT_SECONDS = 20
 
 
-def login_to_moodle(driver):
-    """Open Moodle login page and wait for manual login to complete."""
-    print("Opening Moodle login page... Please log in manually.")
-    driver.get("https://moodle.mit.edu.au/login/index.php")
+class MoodleAutomationError(RuntimeError):
+    """Raised when Moodle cannot complete an update safely."""
 
-    try:
-        # Wait until user is logged in by detecting a page change
-        WebDriverWait(driver, 120).until(lambda d: "login" not in d.current_url.lower())
 
-        print("Login successful. Continuing automation...")
-    except Exception as e:
-        driver.save_screenshot("login_debug_manual.png")
-        graceful_exit(driver, f"Login not detected after timeout. Error: {e}")
+class CsvFormatError(ValueError):
+    """Raised when a group-membership CSV does not have the required shape."""
 
 
-def get_group_mapping(driver, unit_id):
-    """Function to create a mapping of group names to their values for a given unit."""
-    group_mapping = {}
-    group_management_url = f"https://moodle.mit.edu.au/group/index.php?id={unit_id}"
-    driver.get(group_management_url)
-    time.sleep(2)  # Wait for the page to load
+def normalise_group_name(group_name: str) -> str:
+    """Remove Moodle's displayed member count from a group name."""
+    return re.sub(r"\s*\(\d+\)$", "", group_name).strip()
 
-    try:
-        select_element = driver.find_element(By.ID, 'groups')
-        options = select_element.find_elements(By.TAG_NAME, 'option')
-        for option in options:
-            group_name = re.sub(r'\s*\(\d+\)$', '', option.text)  # Clean up group name
-            group_value = option.get_attribute('value')
-            group_mapping[group_name] = group_value
-    except Exception as e:
-        graceful_exit(f"Failed to create group mapping for unit ID {unit_id}: {e}")
 
-    return group_mapping
-
-
-def ensure_auto_select_checkbox(driver):
-    """
-    Ensures the checkbox 'If only one user matches the search, select them automatically' is selected
-    by explicitly checking the 'checked' attribute.
-    """
-    try:
-        # Locate the checkbox by its ID
-        auto_select_checkbox = driver.find_element(By.ID, 'userselector_autoselectuniqueid')
-
-        # Bring the checkbox into view (focus) before interacting
-        driver.execute_script("arguments[0].scrollIntoView(true);", auto_select_checkbox)
-
-        # Retrieve the 'checked' attribute
-        is_checked = auto_select_checkbox.get_attribute("checked")
-
-        # If 'checked' is None or False, the checkbox is not selected
-        if is_checked is None or is_checked.lower() != "true":
-            auto_select_checkbox.click()
-            print(
-                "Checkbox 'If only one user matches the search, select them automatically' was not selected. Now selected.")
-        # else:
-        #    print("Checkbox 'If only one user matches the search, select them automatically' is already selected.")
-    except Exception as e:
-        graceful_exit(driver, f"Failed to locate or interact with the checkbox: {e}")
-
-
-def add_students_to_group(driver, group_value, student_names):
-    """Function to add multiple students to a group."""
-    add_student_url = f"https://moodle.mit.edu.au/group/members.php?group={group_value}"
-    driver.get(add_student_url)
-    time.sleep(1)  # Wait for the page to load
-
-    # Ensure the autoselect single output checkbox is selected
-    ensure_auto_select_checkbox(driver)
-
-    for student_name in student_names:
-        print(f"Adding Student: {student_name}")
-        try:
-            search_box = driver.find_element(By.ID, 'addselect_searchtext')
-            search_box.clear()
-            search_box.send_keys(student_name)
-            search_box.send_keys(Keys.RETURN)
-            time.sleep(1)  # Wait for search results
-
-            add_button = driver.find_element(By.ID, 'add')
-            add_button.click()
-            time.sleep(1)  # Wait for the student to be added
-        except Exception as e:
-            graceful_exit(driver, f"Failed to add student '{student_name}' to group with value '{group_value}': {e}")
-
-
-def process_unit(driver, unit_dir, unit_name, unit_id):
-    """Function to process each unit: read group file, map groups, and add students."""
-    group_mapping = get_group_mapping(driver, unit_id)
-
-    if unit_dir is None:
-        group_file = f"{unit_name}_groups.csv"
-    else:
-        group_file = unit_dir + "/" + f"{unit_name}_groups.csv"
-
-    try:
-        group_df = pd.read_csv(group_file)
-    except Exception as e:
-        graceful_exit(driver, f"Failed to read {group_file}: {e}")
-
-    for index, group_row in group_df.iterrows():
-        group_name = group_row.iloc[0]  # First column is the group name
-        student_names = group_row.iloc[1:].dropna().tolist()  # Other columns are student names
-
-        if group_name not in group_mapping:
-            graceful_exit(driver, f"Group name '{group_name}' not found in mapping for unit {unit_name}")
-
-        print(f"Adding the members for Group: {group_name}")
-
-        group_value = group_mapping[group_name]
-        add_students_to_group(driver, group_value, student_names)
-
-
-def prompt_for_unit_info():
-    """Prompt the user for unit name and Moodle unit ID, then locate the corresponding CSV."""
-    unit_name = input("Enter the Unit Name (e.g., MITS5001): ").strip()
-
-    while True:
-        unit_id_input = input("Enter the Moodle Unit ID (numeric only): ").strip()
-        if unit_id_input.isdigit():
-            unit_id = int(unit_id_input)
-            break
-        else:
-            print("Invalid Unit ID. Please enter a numeric value.")
-
-    # Look for "<unit_name>_groups.csv" in current directory
-    group_file = f"{unit_name}_groups.csv"
-    unit_dir = None
-
-    if not os.path.exists(group_file):
-        # Ask user for directory
-        while True:
-            file_dir = input(f"File '{group_file}' not found. Enter the full folder path of the file: ").strip()
-            custom_path = os.path.join(file_dir, group_file)
-
-            if os.path.exists(custom_path):
-                unit_dir = file_dir
-                break
-            else:
-                print(f"File not found at '{custom_path}'.")
-                retry = input("Do you want to try again? (y/N): ").strip().lower()
-                if retry != 'y':
-                    print("Exiting...")
-                    exit(1)
-
-    return unit_name, unit_id, unit_dir
-
-
-# This method is not used anymore
-def get_chromedriver_path():
-    default_path = os.path.join(os.getcwd(), 'chromedriver')
-
-    if os.path.exists(default_path):
-        return default_path
-
-    while True:
-        chromedriver_dir = input(
-            "Default Chromedriver Not found, Enter the Full path to ChromeDriver EXE (including the executable name) : ")
-        custom_path = chromedriver_dir  # + "//chromedriver"
-        print(custom_path)
-        if os.path.exists(custom_path):
-            return custom_path
-        else:
-            retry = input(
-                "Path Not Found ! Do you want to try again? (y/N): ").strip().lower()
-            if retry != 'y':
-                print("Exiting...")
-                exit(1)
-
-
-def get_chrome_version():
-    system = platform.system()
-    version = None
-    try:
-        if system == "Windows":
-            output = subprocess.check_output(
-                r'reg query "HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon" /v version',
-                shell=True).decode()
-            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output).group(1)
-        elif system == "Linux":
-            output = subprocess.check_output(["google-chrome", "--version"]).decode()
-            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output).group(1)
-    except Exception as e:
-        print(f"Could not detect Chrome version: {e}")
-        sys.exit(1)
-
-    return version
-
-
-def get_chromedriver_download_url(version, os_name):
-    base_url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing"
-    version_main = ".".join(version.split('.')[:3])
-    if os_name == "Windows":
-        return f"{base_url}/{version}/win64/chromedriver-win64.zip"
-    elif os_name == "Linux":
-        return f"{base_url}/{version}/linux64/chromedriver-linux64.zip"
-    else:
-        raise Exception("Unsupported OS for ChromeDriver download")
-
-
-def setup_chrome_driver():
-    os_name = platform.system()
-    chrome_version = get_chrome_version()  # You must define this function separately
-    version_tag = chrome_version.replace(".", "_")
-    driver_dir = os.path.join(os.getcwd(), f"chromedriver_{os_name}_v{version_tag}")
-    driver_bin = "chromedriver.exe" if os_name == "Windows" else "chromedriver"
-    driver_path = os.path.join(driver_dir, driver_bin)
-
-    if os.path.exists(driver_path):
-        print(f"✅ Found existing ChromeDriver for version {chrome_version}")
-    else:
-        print(f"⬇️  Downloading ChromeDriver for version {chrome_version}...")
-
-        download_url = get_chromedriver_download_url(chrome_version, os_name)  # Define this as well
-        zip_path = os.path.join(driver_dir, "chromedriver.zip")
-        os.makedirs(driver_dir, exist_ok=True)
-
-        try:
-            urllib.request.urlretrieve(download_url, zip_path)
-
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(driver_dir)
-
-            os.remove(zip_path)
-
-            # Search for chromedriver inside the extracted structure
-            found = False
-            for root, dirs, files in os.walk(driver_dir):
-                for file in files:
-                    if file.lower().startswith("chromedriver"):
-                        extracted_path = os.path.join(root, file)
-                        shutil.move(extracted_path, driver_path)
-                        found = True
-                        break
-                if found:
-                    break
-
-            if not os.path.exists(driver_path):
-                raise FileNotFoundError("ChromeDriver executable not found after extraction.")
-
-            # Set executable permissions on Linux
-            if os_name != "Windows":
-                os.chmod(driver_path, os.stat(driver_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-            print(f"✅ ChromeDriver saved to: {driver_path}")
-
-        except Exception as e:
-            print(f"❌ Error downloading or extracting ChromeDriver: {e}")
-            sys.exit(1)
-
-    # Launch WebDriver
-    try:
-        service = ChromeService(executable_path=driver_path)
-        driver = webdriver.Chrome(service=service)
-        return driver
-    except Exception as e:
-        print(f"❌ Failed to launch ChromeDriver: {e}")
-        sys.exit(1)
-
-
-def load_csv_file(file_name):
-    file_dir = None
-    # First, check if the file exists in the current directory
-    if os.path.exists(file_name):
-        try:
-            units_df = pd.read_csv(file_name)
-            return units_df, file_dir
-        except Exception as e:
-            print(f"Failed to read {file_name}: {e}")
-            exit(1)
-
-    # If not found, prompt the user for the correct path
-    while True:
-        file_dir = input(f"File '{file_name}' not found. Enter the full folder path of the file : ")
-        custom_path = file_dir + "/" + file_name
-
-        if os.path.exists(custom_path):
-            try:
-                units_df = pd.read_csv(custom_path)
-                return units_df, file_dir
-            except Exception as e:
-                print(f"Failed to read {custom_path}: {e}")
-                exit(1)
-        else:
-            print(f"File not found at '{custom_path}'.")
-            retry = input("Do you want to try entering the path again? (y/N): ").strip().lower()
-            if retry != 'y':
-                print("Exiting...")
-                exit(1)
-
-
-def check_chrome_installed():
-    """Check if Google Chrome is installed on Linux or Windows."""
-    system = platform.system()
-
-    try:
-        if system == "Linux":
-            # Try command line
-            result = subprocess.run(['google-chrome', '--version'], check=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            version = result.stdout.decode().strip()
-            print(f"Detected Chrome version: {version}")
-            return True
-
-        elif system == "Windows":
-            # Try registry query (user-level Chrome install)
-            result = subprocess.check_output(
-                r'reg query "HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon" /v version',
-                shell=True).decode()
-            version = re.search(r"(\d+\.\d+\.\d+\.\d+)", result)
-            if version:
-                print(f"Detected Chrome version: {version.group(1)}")
-                return True
-            else:
-                print("Chrome registry key found but version could not be parsed.")
-                return False
-        else:
-            print(f"Unsupported OS: {system}")
-            return False
-    except Exception as e:
-        print(f"Could not detect Google Chrome: {e}")
+def is_header(row: list[str]) -> bool:
+    """Return whether a row is the optional GroupName, StudentId header."""
+    if len(row) < 2:
         return False
 
+    group_column = row[0].strip().lower().replace(" ", "")
+    student_columns = [value.strip().lower().replace(" ", "") for value in row[1:]]
+    return group_column == "groupname" and all(
+        value in {"studentid", "studentids"} for value in student_columns if value
+    )
 
-def check_operating_system():
-    """Return the name of the current operating system."""
-    os_name = platform.system()
-    print(f"Detected Operating System: {os_name}")
-    return os_name in ["Linux", "Windows"]
+
+def load_group_memberships(csv_path: Path) -> OrderedDictType[str, list[str]]:
+    """
+    Read either supported CSV layout into ordered group-to-student-ID mappings.
+
+    Supported rows are ``GroupName,StudentId,StudentId,...`` and repeated
+    ``GroupName,StudentId`` rows. A GroupName/StudentId header is optional.
+    """
+    groups: OrderedDictType[str, list[str]] = OrderedDict()
+
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
+            rows = list(csv.reader(csv_file))
+    except OSError as error:
+        raise CsvFormatError(f"Cannot read '{csv_path}': {error}") from error
+    except csv.Error as error:
+        raise CsvFormatError(f"Cannot parse '{csv_path}' as CSV: {error}") from error
+
+    for line_number, row in enumerate(rows, start=1):
+        values = [value.strip() for value in row]
+        if not any(values):
+            continue
+        if line_number == 1 and is_header(values):
+            continue
+        if len(values) < 2 or not values[0] or not any(values[1:]):
+            raise CsvFormatError(
+                f"Line {line_number} must contain a group name followed by at least one student ID."
+            )
+        if any(not student_id for student_id in values[1:]):
+            raise CsvFormatError(
+                f"Line {line_number} contains an empty student ID. Remove empty columns or provide an ID."
+            )
+
+        student_ids = groups.setdefault(values[0], [])
+        for student_id in values[1:]:
+            if student_id not in student_ids:
+                student_ids.append(student_id)
+
+    if not groups:
+        raise CsvFormatError("The CSV contains no group memberships.")
+    return groups
 
 
-def validate_environment():
-    """Ensure Google Chrome is installed and OS is supported."""
-    if not check_operating_system():
-        print("Unsupported operating system. Exiting...")
+def ask_to_retry_or_exit() -> None:
+    """Ask whether to correct the current input or leave the program."""
+    if input("Provide another file? (y/N): ").strip().lower() != "y":
+        print("Exiting.")
         sys.exit(1)
 
-    if not check_chrome_installed():
-        print("Google Chrome not found. Please install it first.")
-        sys.exit(1)
 
-    print("Environment validation successful.")
-
-
-def main():
-    validate_environment()
-
-    retry = input("IMPORTANT - Have you already created the group names on Moodle (y/n)? ").strip().lower()
-    if retry != 'y':
-        print(" Please create the groups on Moodle using the import groups feature (Check the template CSV on Git or "
-              "Moodle Docs), \n OR \n Create them Manually on Moodle.")
-        exit(1)
+def prompt_for_csv_file(unit_code: str) -> tuple[Path, OrderedDictType[str, list[str]]]:
+    """Prompt for and validate one CSV, defaulting to <UnitCode>.csv."""
+    default_name = f"{unit_code}.csv"
+    print(
+        "CSV format: GroupName,StudentId,StudentId,... on one row, or repeat "
+        "GroupName,StudentId on multiple rows. A GroupName,StudentId header is optional."
+    )
 
     while True:
-        # Ask for unit info before launching browser
-        unit_name, unit_id, unit_dir = prompt_for_unit_info()
+        file_name = input(f"CSV file name or path [{default_name}]: ").strip() or default_name
+        csv_path = Path(file_name).expanduser()
+        try:
+            return csv_path, load_group_memberships(csv_path)
+        except CsvFormatError as error:
+            print(f"CSV error: {error}")
+            ask_to_retry_or_exit()
 
-        # Launch browser only after inputs are collected
-        driver = setup_chrome_driver()
-        login_to_moodle(driver)
 
-        print(f"Processing Unit Name: {unit_name}, Unit ID: {unit_id}")
-        process_unit(driver, unit_dir, unit_name, unit_id)
+def create_browser() -> tuple[Playwright, Browser, Page]:
+    """
+    Start the Chromium browser bundled with the application.
 
-        # Close browser session after each unit
-        driver.quit()
+    PLAYWRIGHT_BROWSERS_PATH=0 uses Playwright's hermetic browser location. The
+    build workflow places Chromium there, and PyInstaller bundles it with the
+    executable, so end users do not install a browser or a browser driver.
+    """
+    if sync_playwright is None:
+        raise MoodleAutomationError(
+            "Playwright is required to build or run the source. Install the dependencies with "
+            "'python3 -m pip install -r requirements.txt'."
+        )
 
-        again = input("Do you want to process another unit? (y/N): ").strip().lower()
-        if again != 'y':
-            print("All done. Exiting.")
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
+    try:
+        playwright = sync_playwright().start()
+        browser = playwright.chromium.launch(headless=False)
+        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        print("Opened the bundled Chromium browser.")
+        return playwright, browser, page
+    except PlaywrightError as error:
+        raise MoodleAutomationError(f"Could not start the bundled browser: {error}") from error
+
+
+def login_to_moodle(page: Page) -> None:
+    """Open Moodle and wait for the user to complete their normal visible login."""
+    print("Opening Moodle. Complete your normal OAuth or username/password login in the browser window.")
+    page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    try:
+        page.wait_for_function(
+            """() => window.location.hostname === "moodle.mit.edu.au"
+                && !window.location.pathname.includes("/login/")""",
+            timeout=120_000,
+        )
+    except PlaywrightTimeoutError as error:
+        raise MoodleAutomationError("Moodle login did not complete within two minutes.") from error
+    print("Moodle login successful.")
+
+
+def get_group_mapping(page: Page, unit_id: int) -> dict[str, str]:
+    """Return existing Moodle groups and their internal IDs for one unit."""
+    page.goto(f"{MOODLE_URL}/group/index.php?id={unit_id}", wait_until="domcontentloaded")
+    try:
+        page.locator("#groups").wait_for(state="attached", timeout=WAIT_SECONDS * 1000)
+        group_options = page.locator("#groups option")
+        group_mapping = {}
+        for index in range(group_options.count()):
+            option = group_options.nth(index)
+            group_id = option.get_attribute("value")
+            if group_id:
+                group_mapping[normalise_group_name(option.text_content() or "")] = group_id
+        return group_mapping
+    except PlaywrightTimeoutError as error:
+        raise MoodleAutomationError(
+            f"Could not load groups for Moodle unit ID {unit_id}. Check the unit ID and your permissions."
+        ) from error
+    except PlaywrightError as error:
+        raise MoodleAutomationError(f"Could not read Moodle groups: {error}") from error
+
+
+def validate_groups_exist(
+    group_memberships: OrderedDictType[str, list[str]],
+    group_mapping: dict[str, str],
+    unit_code: str,
+) -> None:
+    """Fail before updates if any CSV group is absent from Moodle."""
+    missing_groups = [
+        group_name
+        for group_name in group_memberships
+        if normalise_group_name(group_name) not in group_mapping
+    ]
+    if missing_groups:
+        raise MoodleAutomationError(
+            f"These groups do not exist in Moodle for {unit_code}: {', '.join(missing_groups)}. "
+            "Create them in Moodle or correct the CSV, then try again."
+        )
+
+
+def add_students_to_group(page: Page, group_id: str, student_ids: list[str]) -> None:
+    """Add the provided student IDs to an existing Moodle group."""
+    page.goto(f"{MOODLE_URL}/group/members.php?group={group_id}", wait_until="domcontentloaded")
+    try:
+        auto_select = page.locator("#userselector_autoselectuniqueid")
+        auto_select.wait_for(state="visible", timeout=WAIT_SECONDS * 1000)
+        if not auto_select.is_checked():
+            auto_select.check()
+
+        search_box = page.locator("#addselect_searchtext")
+        matching_students = page.locator("#addselect option")
+        add_button = page.locator("#add")
+        for student_id in student_ids:
+            print(f"Adding student: {student_id}")
+            search_box.fill(student_id)
+            search_box.press("Enter")
+            matching_students.first.wait_for(state="attached", timeout=WAIT_SECONDS * 1000)
+            add_button.click()
+    except PlaywrightTimeoutError as error:
+        raise MoodleAutomationError(
+            "Moodle did not return a matching student in time. Check the student ID and try again."
+        ) from error
+    except PlaywrightError as error:
+        raise MoodleAutomationError(f"Could not add a student to the group: {error}") from error
+
+
+def process_unit(
+    page: Page,
+    unit_code: str,
+    unit_id: int,
+    group_memberships: OrderedDictType[str, list[str]],
+) -> None:
+    """Validate all named Moodle groups, then add every requested student."""
+    group_mapping = get_group_mapping(page, unit_id)
+    validate_groups_exist(group_memberships, group_mapping, unit_code)
+
+    for group_name, student_ids in group_memberships.items():
+        print(f"Adding members to group: {group_name}")
+        add_students_to_group(page, group_mapping[normalise_group_name(group_name)], student_ids)
+
+
+def prompt_for_unit_info() -> tuple[str, int, Path, OrderedDictType[str, list[str]]]:
+    """Prompt for one unit and its one group-membership CSV."""
+    while True:
+        unit_code = input("Unit code (for example, MITS5001): ").strip()
+        if unit_code:
             break
+        print("A unit code is required.")
+
+    while True:
+        unit_id = input("Moodle unit ID (numbers only): ").strip()
+        if unit_id.isdigit():
+            break
+        print("Invalid Moodle unit ID. Enter numbers only.")
+
+    csv_path, group_memberships = prompt_for_csv_file(unit_code)
+    return unit_code, int(unit_id), csv_path, group_memberships
+
+
+def main() -> None:
+    """Run visible Moodle group updates for one or more units."""
+    playwright = browser = page = None
+    try:
+        playwright, browser, page = create_browser()
+        login_to_moodle(page)
+
+        while True:
+            unit_code, unit_id, csv_path, group_memberships = prompt_for_unit_info()
+            print(f"Processing {unit_code} from '{csv_path}'.")
+            process_unit(page, unit_code, unit_id, group_memberships)
+            print(f"Completed {unit_code}.")
+
+            if input("Process another unit? (y/N): ").strip().lower() != "y":
+                break
+    except MoodleAutomationError as error:
+        print(f"Error: {error}")
+        sys.exit(1)
+    finally:
+        if browser is not None:
+            browser.close()
+        if playwright is not None:
+            playwright.stop()
+
+    print("All done.")
 
 
 if __name__ == "__main__":
