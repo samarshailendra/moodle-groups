@@ -46,15 +46,27 @@ def normalise_group_name(group_name: str) -> str:
 
 
 def is_header(row: list[str]) -> bool:
-    """Return whether a row is the optional GroupName, StudentId header."""
+    """Return whether a row is a CSV header containing a group column."""
     if len(row) < 2:
         return False
 
-    group_column = row[0].strip().lower().replace(" ", "")
-    student_columns = [value.strip().lower().replace(" ", "") for value in row[1:]]
-    return group_column == "groupname" and all(
-        value in {"studentid", "studentids"} for value in student_columns if value
+    group_column = (
+        row[0]
+        .strip()
+        .lower()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("_", "")
     )
+
+    return group_column in {
+        "group",
+        "groupname",
+        "groupsname",
+        "groups",
+        "groupid",
+        "groupids",
+    }
 
 
 def load_group_memberships(csv_path: Path) -> OrderedDictType[str, list[str]]:
