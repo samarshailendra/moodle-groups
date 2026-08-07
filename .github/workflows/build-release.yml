@@ -22,20 +22,32 @@ jobs:
           - name: Windows
             os: windows-latest
             extension: ".exe"
+
     runs-on: ${{ matrix.os }}
+
     env:
       PLAYWRIGHT_BROWSERS_PATH: "0"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install build dependencies
-        run: python -m pip install --upgrade pip pyinstaller -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller -r requirements.txt
+
       - name: Install bundled Chromium
         run: python -m playwright install --no-shell chromium
+
       - name: Build executable
         run: pyinstaller --noconfirm --clean UnitsAndGroups.spec
+
       - name: Upload ${{ matrix.name }} package
         uses: actions/upload-artifact@v4
         with:
@@ -43,21 +55,38 @@ jobs:
           path: dist/UnitsAndGroups${{ matrix.extension }}
           if-no-files-found: error
 
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
+
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-         fetch-depth: 0
-         
-      - uses: actions/download-artifact@v4
+          fetch-depth: 0
+
+      - name: Verify Git repository
+        run: |
+          pwd
+          git rev-parse --is-inside-work-tree
+          git status
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
           pattern: UpdateGroupsInMoodle-*
           path: release
           merge-multiple: true
+
+      - name: Show release files
+        run: |
+          ls -lah release
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" release/* --generate-notes
+        run: |
+          gh release create "${{ github.ref_name }}" release/* --generate-notes
